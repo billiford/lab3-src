@@ -102,9 +102,6 @@ void run_proc(proc_stats_t* p_stats) {
 
 /** STATE UPDATE stage */
 void state_update(proc_stats_t* p_stats, const cycle_half_t &half) {
-	//printf("cdb %d %d %d\n", cdb[0].free, cdb[1].free, cdb[2].free);
-	//printf("fu1, fu2, fu3: %u %u %u\n", fu_cnt[0], fu_cnt[1], fu_cnt[2]);
-	//bool ready_to_delete = false;
     if (half == cycle_half_t::FIRST) {
         // record instr entry cycle
         for(unsigned i = 0; i < scheduling_queue.size(); i++){
@@ -119,24 +116,10 @@ void state_update(proc_stats_t* p_stats, const cycle_half_t &half) {
         while(it != scheduling_queue.end()){
 			//ready_to_delete = false;
             auto instr = *it;
-			printf("status up %lu\n", instr->cycle_status_update);
-            if(instr->cycle_status_update){
-				/*for (unsigned j = 0; j < cdb.size(); j++) {
-					if (cdb[j].free && !ready_to_delete) {
-						cdb[j].free = false;
-						instr->dest_reg > -1 ? cdb[j].reg = instr->dest_reg : cdb[j].reg = 0;
-						cdb[j].tag = instr->id;
-						fu_cnt[instr->op_code]++;
-						ready_to_delete = true;
-						//continue;
-					}
-				}*/
-				
-				//if (ready_to_delete) {	
-					fu_cnt[instr->op_code]++;				
-					it = scheduling_queue.erase(it);
-					p_stats->retired_instruction++;
-				//}
+            if(instr->cycle_status_update){	
+				fu_cnt[instr->op_code]++;				
+				it = scheduling_queue.erase(it);
+				p_stats->retired_instruction++;
             } else {
                 it++;
             }
@@ -149,30 +132,27 @@ void state_update(proc_stats_t* p_stats, const cycle_half_t &half) {
 
 /** EXECUTE stage */
 void execute(proc_stats_t* p_stats, const cycle_half_t &half) {
-	//bool ready_to_execute = true;
-	printf("fu1, fu2, fu3: %u %u %u\n", fu_cnt[0], fu_cnt[1], fu_cnt[2]);
-	//bool added_to_CDB = false;
     if (half == cycle_half_t::FIRST) {
         // record instr entry cycle
         for(unsigned i = 0; i < scheduling_queue.size(); i++){
-			//ready_to_execute = true;
+			bool added_to_CDB = false;
             auto instr = scheduling_queue[i];            
             if (instr->fired == true && !instr->cycle_execute) {
 				/*for (unsigned j = 0; j < cdb.size(); j++) {
-					for (unsigned k = 0; k < fu_cnt[instr->op_code]; k++) {
-						if (cdb[j].free) {
-							cdb[j].free = false;
-							cdb[j].tag = instr->id;
-							added_to_CDB = true;
-						}
+					if (cdb[j].free && !added_to_CDB) {
+						cdb[j].free = false;
+						cdb[j].tag = instr->id;
+						if (instr->dest_reg != -1)
+							cdb[j].reg = instr->dest_reg;
+						added_to_CDB = true;
 					}
 				}*/
 				/*if (fu_cnt[instr->op_code] <= 0)
 					ready_to_execute = false;*/
 				/*else 
 					fu_cnt[instr->op_code]--;*/
-				
-				//if (ready_to_execute) {
+				added_to_CDB = true;
+				if (added_to_CDB) {
 					printf("executing\n");
 					instr->cycle_execute = p_stats->cycle_count;                  
 
@@ -184,17 +164,22 @@ void execute(proc_stats_t* p_stats, const cycle_half_t &half) {
 						register_file[instr->src_reg[0]] = {true};
 					if (instr->src_reg[1] != -1)
 						register_file[instr->src_reg[1]] = {true};
-				//}
+				}
             }
         }
     } else {
+		for (unsigned i = 0; i < scheduling_queue.size(); i++) {
+			auto instr = scheduling_queue[i];      
+			for (unsigned j = 0; j < cdb.size(); j++) {
+				if (instr->id == cdb[j].tag && !cdb[j].free)
+					cdb[j].free = true;
+			}
+		}
     }
 }
 
 /** SCHEDULE stage */
 void schedule(proc_stats_t* p_stats, const cycle_half_t &half) {
-	printf("_______\nsched\n_________\n");
-	//int fus_used = 0;
 	bool ready_to_fire = true;
     if (half == cycle_half_t::FIRST) {
         // record instr entry cycle
@@ -242,14 +227,13 @@ void schedule(proc_stats_t* p_stats, const cycle_half_t &half) {
 				if (instr->src_tag[1] == 0 && register_file[instr->src_reg[1]].ready == false)
 					continue;*/
 				
-				if (fu_cnt[instr->op_code <= 0])
+				if (fu_cnt[instr->op_code] <= 0)
 					ready_to_fire = false;
 
 				if (ready_to_fire) {
 					instr->fired = true;
 					fu_cnt[instr->op_code]--;
 				}
-				//fus_used++;
             }
         }
     }
@@ -257,7 +241,7 @@ void schedule(proc_stats_t* p_stats, const cycle_half_t &half) {
 
 /** DISPATCH stage */
 void dispatch(proc_stats_t* p_stats, const cycle_half_t &half) {
-	printf("dispatch\n");
+	//printf("dispatch\n");
     if (half == cycle_half_t::FIRST) {    
         if (p_stats->max_disp_size < dispatching_queue.size())
             p_stats->max_disp_size = dispatching_queue.size();
